@@ -107,17 +107,63 @@ exports.getAllReservations = getAllReservations;
  * @param {*} limit The number of results to return.
  * @return {Promise<[{}]>}  A promise to the properties.
  */
-const getAllProperties = (options, limit = 10) => {
-  return pool
-    .query(`SELECT * FROM properties LIMIT $1`, [limit])
-    .then((result) => {
-      console.log(result.rows);
-      return result.rows;
-    })
-    .catch((err) => {
-      console.log(err.message);
-    });
+
+const getAllProperties = function(options, limit = 10) {
+  // 1
+  const queryParams = [];
+
+  // 2
+  let queryString = `
+  SELECT properties.*, avg(property_reviews.rating) as average_rating
+  FROM properties
+  JOIN property_reviews ON properties.id = property_id
+  `;
+
+
+  if (options.owner_id) {
+    queryParams.push(Number(options.owner_id));
+    queryString += `WHERE owner_id = $${queryParams.length} `;
+  }
+
+  if (options.city) {
+    queryParams.push(`%${options.city}%`);
+    queryString += `WHERE city LIKE $${queryParams.length} `;
+  }
+
+  if (options.minimum_price_per_night) {
+    queryParams.push(Number(options.minimum_price_per_night) * 100);
+    queryString += queryParams.length > 1 ? ` AND ` : `WHERE `;
+    queryString += `cost_per_night > $${queryParams.length}`;
+  }
+
+  if (options.maximum_price_per_night) {
+    queryParams.push(Number(options.maximum_price_per_night) * 100);
+    queryString += queryParams.length > 1 ? ` AND ` : `WHERE `;
+    queryString += `cost_per_night < $${queryParams.length}`;
+  }
+
+  // Was getting a GROUP BY error if search had minimum rating, moved GROUP BY clause above
+  queryString += `GROUP BY properties.id
+  `;
+
+  if (options.minimum_rating) {
+    queryParams.push(Number(options.minimum_rating));
+    queryString += `HAVING avg(property_reviews.rating) >= $${queryParams.length}`;
+  }
+
+
+  queryParams.push(limit);
+  queryString += `
+  ORDER BY cost_per_night
+  LIMIT $${queryParams.length};
+  `;
+
+
+  console.log(queryString, queryParams);
+
+  return pool.query(queryString, queryParams).then((res) => res.rows).catch((err) => console.log(err.message));
 };
+
 exports.getAllProperties = getAllProperties;
 
 
@@ -132,4 +178,4 @@ const addProperty = function(property) {
   properties[propertyId] = property;
   return Promise.resolve(property);
 };
-exports.addProperty = addProperty;
+exports.addProperty = addProperty;;;;;;;
